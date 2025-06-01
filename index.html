@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixel Canvas - Placez votre pixel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+    <style>
+        .pixel {
+            width: 10px;
+            height: 10px;
+            border: 1px solid rgba(0,0,0,0.05);
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .pixel:hover {
+            transform: scale(1.3);
+            z-index: 10;
+        }
+        .canvas-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(10px, 1fr));
+            gap: 0;
+            width: 100%;
+            height: 100vh;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: -1;
+            overflow: hidden;
+        }
+        #colorPicker {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            width: 50px;
+            height: 50px;
+            border: none;
+            cursor: pointer;
+            background: none;
+        }
+        #colorPicker::-webkit-color-swatch {
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+        }
+        #colorPicker::-moz-color-swatch {
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+        }
+        .timer-ring {
+            transition: stroke-dashoffset 1s linear;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="canvas-container" id="canvas"></div>
+
+    <div class="fixed bottom-6 right-6 z-50">
+        <div class="bg-white rounded-full p-4 shadow-2xl flex items-center space-x-4">
+            <div class="relative">
+                <input type="color" id="colorPicker" value="#3B82F6">
+                <div class="absolute -bottom-2 -right-2 bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">✓</div>
+            </div>
+
+            <div class="relative w-12 h-12">
+                <svg class="w-full h-full" viewBox="0 0 36 36">
+                    <circle cx="18" cy="18" r="16" fill="none" stroke="#e6e6e6" stroke-width="2"></circle>
+                    <circle id="timerCircle" cx="18" cy="18" r="16" fill="none" stroke="#3B82F6" stroke-width="2" stroke-dasharray="100" stroke-dashoffset="100" class="timer-ring" transform="rotate(-90 18 18)"></circle>
+                </svg>
+                <div class="absolute inset-0 flex items-center justify-center font-bold text-gray-700" id="timerText">60</div>
+            </div>
+
+            <button id="placePixelBtn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-full transition-all duration-300 transform hover:scale-105 shadow-lg">
+                Placer Pixel
+            </button>
+        </div>
+    </div>
+
+    <div class="fixed top-6 left-6 z-50 bg-white bg-opacity-90 rounded-xl p-4 shadow-lg max-w-xs">
+        <h1 class="text-2xl font-bold text-gray-800 mb-2">Pixel Canvas</h1>
+        <p class="text-gray-600 mb-4">Placez votre pixel unique sur la toile collective. Un pixel toutes les 60 secondes.</p>
+        <div class="flex items-center text-sm text-gray-500">
+            <i class="fas fa-users mr-2"></i>
+            <span id="userCount" class="mr-2">1</span> utilisateur actif
+        </div>
+    </div>
+
+    <div id="notification" class="fixed top-6 right-6 z-50 bg-green-500 text-white px-6 py-3 rounded-lg shadow-xl transform translate-x-full transition-transform duration-300 hidden">
+        Pixel placé avec succès!
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const canvas = document.getElementById('canvas');
+            const colorPicker = document.getElementById('colorPicker');
+            const placePixelBtn = document.getElementById('placePixelBtn');
+            const timerText = document.getElementById('timerText');
+            const timerCircle = document.getElementById('timerCircle');
+            const userCount = document.getElementById('userCount');
+            const notification = document.getElementById('notification');
+
+            let canPlacePixel = true;
+            let timer = 60;
+            let usersOnline = 1;
+
+            // Charger l'état du timer depuis localStorage
+            const savedTimer = localStorage.getItem('pixelTimer');
+            if (savedTimer) {
+                const { endTime, color } = JSON.parse(savedTimer);
+                const now = new Date().getTime();
+                const remainingTime = Math.ceil((endTime - now) / 1000);
+
+                if (remainingTime > 0) {
+                    timer = remainingTime;
+                    canPlacePixel = false;
+                    startTimer();
+                    showNotification("Vous devez attendre avant de placer un nouveau pixel", "red");
+                }
+            }
+
+            userCount.textContent = usersOnline;
+
+            function createCanvas() {
+                const pixelSize = 10;
+                const width = Math.ceil(window.innerWidth / pixelSize);
+                const height = Math.ceil(window.innerHeight / pixelSize);
+
+                canvas.innerHTML = '';
+                canvas.style.gridTemplateColumns = `repeat(${width}, ${pixelSize}px)`;
+
+                for (let i = 0; i < width * height; i++) {
+                    const pixel = document.createElement('div');
+                    pixel.className = 'pixel bg-white';
+                    pixel.dataset.index = i;
+                    pixel.addEventListener('click', handlePixelClick);
+                    canvas.appendChild(pixel);
+                }
+            }
+
+            function handlePixelClick(e) {
+                if (!canPlacePixel) {
+                    showNotification("Attendez avant de placer un nouveau pixel", "red");
+                    return;
+                }
+
+                const selectedColor = colorPicker.value;
+                e.target.style.backgroundColor = selectedColor;
+                e.target.dataset.color = selectedColor;
+
+                canPlacePixel = false;
+                placePixelBtn.disabled = true;
+                placePixelBtn.classList.remove('hover:scale-105', 'hover:bg-blue-600');
+                placePixelBtn.classList.add('opacity-50', 'cursor-not-allowed');
+
+                startTimer();
+                showNotification("Pixel placé avec succès!", "green");
+
+                savePixel(e.target.dataset.index, selectedColor);
+            }
+
+            function startTimer() {
+                const endTime = new Date().getTime() + timer * 1000;
+                localStorage.setItem('pixelTimer', JSON.stringify({ endTime, color: colorPicker.value }));
+
+                updateTimerDisplay();
+
+                const timerInterval = setInterval(() => {
+                    const now = new Date().getTime();
+                    timer = Math.ceil((endTime - now) / 1000);
+
+                    if (timer <= 0) {
+                        clearInterval(timerInterval);
+                        localStorage.removeItem('pixelTimer');
+                        timer = 0;
+                        canPlacePixel = true;
+                        placePixelBtn.disabled = false;
+                        placePixelBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                        placePixelBtn.classList.add('hover:scale-105', 'hover:bg-blue-600');
+                    }
+
+                    updateTimerDisplay();
+                }, 1000);
+            }
+
+            function updateTimerDisplay() {
+                timerText.textContent = timer;
+                const offset = (timer / 60) * 100;
+                timerCircle.style.strokeDashoffset = offset;
+
+                if (timer < 10) {
+                    timerCircle.style.stroke = '#ef4444';
+                } else if (timer < 30) {
+                    timerCircle.style.stroke = '#f59e0b';
+                } else {
+                    timerCircle.style.stroke = '#3B82F6';
+                }
+            }
+
+            function showNotification(message, type) {
+                notification.textContent = message;
+                notification.className = `fixed top-6 right-6 z-50 bg-${type}-500 text-white px-6 py-3 rounded-lg shadow-xl transform translate-x-0 transition-transform duration-300`;
+
+                setTimeout(() => {
+                    notification.classList.add('translate-x-full');
+                }, 3000);
+
+                setTimeout(() => {
+                    notification.classList.add('hidden');
+                    notification.classList.remove('translate-x-0');
+                }, 3500);
+            }
+
+            function savePixel(index, color) {
+                let pixels = JSON.parse(localStorage.getItem('pixelCanvas')) || {};
+                pixels[index] = color;
+                localStorage.setItem('pixelCanvas', JSON.stringify(pixels));
+            }
+
+            function loadPixels() {
+                const pixels = JSON.parse(localStorage.getItem('pixelCanvas')) || {};
+                const pixelElements = document.querySelectorAll('.pixel');
+
+                Object.entries(pixels).forEach(([index, color]) => {
+                    if (pixelElements[index]) {
+                        pixelElements[index].style.backgroundColor = color;
+                        pixelElements[index].dataset.color = color;
+                    }
+                });
+            }
+
+            createCanvas();
+            loadPixels();
+            window.addEventListener('resize', function() {
+                createCanvas();
+                setTimeout(loadPixels, 100);
+            });
+
+            colorPicker.addEventListener('input', function() {
+                placePixelBtn.style.backgroundColor = this.value;
+                timerCircle.style.stroke = this.value;
+                const check = this.nextElementSibling;
+                check.style.backgroundColor = this.value;
+            });
+        });
+    </script>
+</body>
+</html>
